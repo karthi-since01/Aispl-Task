@@ -9,5 +9,6 @@ target 'Aispl-Task' do
   pod 'Alamofire', '~> 5.4'
   pod 'AlamofireImage'
   pod 'GooglePlaces'
+  pod 'RealmSwift'
 
 end

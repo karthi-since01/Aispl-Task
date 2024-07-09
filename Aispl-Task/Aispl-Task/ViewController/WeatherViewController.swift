@@ -10,11 +10,15 @@ import Foundation
 import GooglePlaces
 import Alamofire
 import AlamofireImage
+import CoreLocation
+import RealmSwift
 
 class WeatherViewController: UIViewController, UITextFieldDelegate {
     
     var placesClient: GMSPlacesClient!
     var autocompleteResults = [GMSAutocompletePrediction]()
+    var locationManager: CLLocationManager!
+    var searchDetailsText: String?
     
     lazy var containerView: UIView = {
         let view = UIView()
@@ -39,8 +43,6 @@ class WeatherViewController: UIViewController, UITextFieldDelegate {
         let imageView = UIImageView(image: UIImage(systemName: "magnifyingglass"))
         imageView.contentMode = .scaleAspectFit
         imageView.isUserInteractionEnabled = true
-        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(searchButtonTapped))
-        imageView.addGestureRecognizer(tapGesture)
         let rightView = UIView(frame: CGRect(x: 0, y: 0, width: 30, height: 30))
         imageView.frame = CGRect(x: 0, y: 0, width: 20, height: 20)
         imageView.center = rightView.center
@@ -96,6 +98,12 @@ class WeatherViewController: UIViewController, UITextFieldDelegate {
         placesClient = GMSPlacesClient.shared()
         listTableView.isHidden = true
         setupUi()
+        
+        locationManager = CLLocationManager()
+        locationManager.delegate = self
+        locationManager.requestWhenInUseAuthorization()
+        locationManager.startUpdatingLocation()
+        checkLocationAuthorization()
     }
     
     func setupUi() {
@@ -151,8 +159,27 @@ class WeatherViewController: UIViewController, UITextFieldDelegate {
         bottomView.centerX == containerView.centerX
     }
     
-    @objc func searchButtonTapped() {
-        print("search button tapped")
+    func checkLocationAuthorization() {
+        switch CLLocationManager.authorizationStatus() {
+        case .authorizedWhenInUse, .authorizedAlways:
+            locationManager.startUpdatingLocation()
+        case .notDetermined:
+            locationManager.requestWhenInUseAuthorization()
+        case .denied, .restricted:
+            fetchLastStoredPlaceFromRealm()
+        @unknown default:
+            fatalError("Unknown authorization status.")
+        }
+    }
+    
+    func fetchLastStoredPlaceFromRealm() {
+        let realm = try! Realm()
+        let recentPlaces = realm.objects(Place.self)
+        if let lastPlace = recentPlaces.last {
+            self.searchDetailsText = lastPlace.name
+            print(lastPlace.name)
+            getLocationDetails()
+        }
     }
     
     @objc func textFieldDidChange(_ textField: UITextField) {
@@ -177,16 +204,18 @@ class WeatherViewController: UIViewController, UITextFieldDelegate {
             self.listTableView.reloadData()
         }
     }
-
+    
     func textFieldShouldReturn(_ textField: UITextField) -> Bool {
         textField.resignFirstResponder()
-        print("Search key pressed")
         
-        guard let searchText = searchTextField.text, !searchText.isEmpty else {
-            return true
-        }
+        self.searchDetailsText = searchTextField.text
+        getLocationDetails()
+        return true
+    }
+    
+    func getLocationDetails() {
         
-        let endPoint = "https://api.weatherapi.com/v1/current.json?key=d5d03b2aa8d94e6eb52135020242806&q=\(searchText)&aqi=no"
+        let endPoint = "https://api.weatherapi.com/v1/current.json?key=d5d03b2aa8d94e6eb52135020242806&q=\(self.searchDetailsText ?? "")&aqi=no"
         
         GenericAPI.getRequest(url: endPoint) { (result: Result<WeatherModel, Error>) in
             switch result {
@@ -194,11 +223,18 @@ class WeatherViewController: UIViewController, UITextFieldDelegate {
                 DispatchQueue.main.async {
                     self.locationLabel.text = weatherModel.location.name
                     self.dayDateLabel.text = weatherModel.location.localtime
-                    self.degreeAndNameView.degreeLabel.text = "\(weatherModel.current.tempC)"
+                    self.degreeAndNameView.degreeLabel.text = "\(weatherModel.current.tempC)°c"
                     self.bottomView.windMeasureLabel.text = "\(weatherModel.current.windMph) m/s"
                     self.bottomView.tempMeasureLabel.text = "\(weatherModel.current.tempF)°"
                     if let iconURL = URL(string: "https:\(weatherModel.current.condition.icon)") {
                         self.weatherImage.af.setImage(withURL: iconURL)
+                    }
+                    self.degreeAndNameView.updateWishLabel(with: weatherModel.location.localtime)
+                    let realm = try! Realm()
+                    try! realm.write {
+                        let place = Place()
+                        place.name = weatherModel.location.name
+                        realm.add(place)
                     }
                 }
             case .failure(let error):
@@ -209,7 +245,6 @@ class WeatherViewController: UIViewController, UITextFieldDelegate {
                 }
             }
         }
-        return true
     }
 }
 
@@ -222,7 +257,10 @@ extension WeatherViewController: UITableViewDataSource, UITableViewDelegate {
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         switch section {
         case 0:
-            return 0
+            let realm = try! Realm()
+            let recentPlaces = realm.objects(Place.self)
+            let count = min(recentPlaces.count, 3)
+            return count
         case 1:
             return autocompleteResults.count
         default:
@@ -234,8 +272,14 @@ extension WeatherViewController: UITableViewDataSource, UITableViewDelegate {
         let cell = tableView.dequeueReusableCell(withIdentifier: "LocationCell", for: indexPath) as! LocationTableViewCell
         switch indexPath.section {
         case 0:
-            cell.headingLabel.text = "San Francisco"
-            cell.subheadingLabel.text = "CA, USA"
+            let realm = try! Realm()
+            let recentPlaces = realm.objects(Place.self)
+            let index = recentPlaces.count - indexPath.row - 1
+            if index >= 0 && index < recentPlaces.count {
+                let place = recentPlaces[index]
+                cell.headingLabel.text = place.name
+                cell.subheadingLabel.text = ""
+            }
         case 1:
             let result = autocompleteResults[indexPath.row]
             let placeID = result.placeID
@@ -272,7 +316,16 @@ extension WeatherViewController: UITableViewDataSource, UITableViewDelegate {
         
         switch indexPath.section {
         case 0:
-
+            let realm = try! Realm()
+            let recentPlaces = realm.objects(Place.self)
+            let index = recentPlaces.count - indexPath.row - 1
+            if index >= 0 && index < recentPlaces.count {
+                let place = recentPlaces[index]
+                DispatchQueue.main.async {
+                    self.searchTextField.text = place.name
+                    self.listTableView.isHidden = true
+                }
+            }
             break
         case 1:
             let result = autocompleteResults[indexPath.row]
@@ -296,6 +349,69 @@ extension WeatherViewController: UITableViewDataSource, UITableViewDelegate {
     }
     
     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
-        return 55
+        switch indexPath.section {
+        case 0:
+            return 35
+        case 1:
+            return 50
+        default:
+            return 55
+        }
+    }
+}
+
+extension WeatherViewController: CLLocationManagerDelegate {
+    
+    func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
+        checkLocationAuthorization()
+    }
+    
+    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        if let location = locations.last {
+            let geocoder = CLGeocoder()
+            geocoder.reverseGeocodeLocation(location) { (placemarks, error) in
+                if let error = error {
+                    print("Error in reverse geocoding: \(error.localizedDescription)")
+                    return
+                }
+                if let placemark = placemarks?.first, let placeName = placemark.locality {
+                    DispatchQueue.main.async {
+                        self.locationLabel.text = placeName
+                        self.searchDetailsText = placeName
+                        self.getLocationDetails()
+                    }
+                }
+            }
+            locationManager.stopUpdatingLocation()
+        }
+    }
+    
+    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
+        print("Failed to get user location: \(error.localizedDescription)")
+        DispatchQueue.main.async {
+            self.locationLabel.text = ""
+            self.showLocationAlert()
+        }
+    }
+    
+    func showLocationAlert() {
+        let alertController = UIAlertController(title: "Location Services Disabled", message: "Please enable location services in Settings to get your current location.", preferredStyle: .alert)
+        
+        let settingsAction = UIAlertAction(title: "Settings", style: .default) { (_) -> Void in
+            guard let settingsUrl = URL(string: UIApplication.openSettingsURLString) else {
+                return
+            }
+            if UIApplication.shared.canOpenURL(settingsUrl) {
+                UIApplication.shared.open(settingsUrl, completionHandler: { (success) in
+                    print("Settings opened: \(success)")
+                })
+            }
+        }
+        alertController.addAction(settingsAction)
+        
+        let cancelAction = UIAlertAction(title: "Cancel", style: .cancel, handler: nil)
+        alertController.addAction(cancelAction)
+        
+        self.present(alertController, animated: true, completion: nil)
     }
 }

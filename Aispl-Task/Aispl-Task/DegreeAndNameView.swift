@@ -79,5 +79,22 @@ class DegreeAndNameView: UIView {
         dashLabel.width == .ratioHeightBasedOniPhoneX(225)
         
     }
-    
+ 
+    func updateWishLabel(with time: String) {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd HH:mm"
+            if let date = formatter.date(from: time) {
+                let hour = Calendar.current.component(.hour, from: date)
+                
+                if hour >= 6 && hour < 12 {
+                    wishLabel.text = "GOOD MORNING"
+                } else if hour >= 12 && hour < 18 {
+                    wishLabel.text = "GOOD AFTERNOON"
+                } else {
+                    wishLabel.text = "GOOD EVENING"
+                }
+            } else {
+                wishLabel.text = "TIME ERROR"
+            }
+        }
 }
