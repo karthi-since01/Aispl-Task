@@ -21,7 +21,6 @@ class GenericAPI {
         AF.request(url, method: .get, parameters: parameters, headers: headers).responseData { response in
             switch response.result {
             case .success(let data):
-                print(data)
                 do {
                     let decoder = JSONDecoder()
                     let decodedData = try decoder.decode(T.self, from: data)

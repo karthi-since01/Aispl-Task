@@ -6,6 +6,7 @@
 //
 
 import UIKit
+import GooglePlaces
 
 @main
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -14,6 +15,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var navigationController = UINavigationController()
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+        
+        GMSPlacesClient.provideAPIKey("AIzaSyAKB_B9_RXuhnNkpbGuHoYTVp60BjLbsZc")
         
         let vC = WeatherViewController()
         navigationController = UINavigationController(rootViewController: vC)

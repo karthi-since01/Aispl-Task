@@ -4,6 +4,8 @@
 <dict>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
+        <key>NSLocationWhenInUseUsageDescription</key>
+        <string>We need your location to show you the weather forecast for your area.</string>
 		<key>UIApplicationSupportsMultipleScenes</key>
 		<false/>
 	</dict>

@@ -8,5 +8,6 @@ target 'Aispl-Task' do
   # Pods for Aispl-Task
   pod 'Alamofire', '~> 5.4'
   pod 'AlamofireImage'
+  pod 'GooglePlaces'
 
 end
